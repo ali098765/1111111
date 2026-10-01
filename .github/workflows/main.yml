@@ -1,0 +1,58 @@
+name: Super-Light-Windows-Server
+
+on:
+  workflow_dispatch:
+
+jobs:
+  lightweight-server:
+    runs-on: windows-2022
+    timeout-minutes: 3600
+    steps:
+      - name: Enable RDP & Network Access
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          netsh advfirewall firewall add rule name="RDP" dir=in action=allow protocol=TCP localport=3389
+
+      - name: Create User
+        run: |
+          $password = "P@ssw0rd123!"
+          $secure = ConvertTo-SecureString$password -AsPlainText -Force
+          New-LocalUser -Name "Admin" -Password $secure -AccountNeverExpires
+          Add-LocalGroupMember -Group "Administrators" -Member "Admin"
+          echo "CRED=User: Admin | Password: $password" >> $env:GITHUB_ENV
+
+      - name: Maximize Speed & Disable Unneeded Services
+        run: |
+          # إيقاف التحديثات والخدمات الثقيلة لزيادة الخفة
+          Stop-Service wuauserv -ErrorAction SilentlyContinue
+          Set-Service wuauserv -StartupType Disabled
+          Stop-Service SysMain -ErrorAction SilentlyContinue
+          Set-Service SysMain -StartupType Disabled
+
+          # تسريع وتخفيف الواجهة البصرية لأقصى حد
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "UserPreferencesMask" -Value ([byte[]](0x90,0x12,0x03,0x80,0x10,0x00,0x00,0x00))
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop\WindowMetrics' -Name "MinAnimate" -Value 0
+        shell: pwsh
+
+      - name: Setup Tailscale
+        run: |
+          $installerPath = "C:\tailscale.msi"
+          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-1.82.0-amd64.msi" -OutFile $installerPath
+          Start-Process msiexec.exe -ArgumentList "/i", "`"$installerPath`"", "/quiet", "/norestart" -Wait
+          Remove-Item $installerPath -Force
+
+      - name: Connect Tailscale & Run
+        run: |
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=light-server-$env:GITHUB_RUN_ID
+          $ip =$null
+          while (-not $ip) {
+              $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
+              Start-Sleep -Seconds 3
+          }
+          Write-Host "=== LIGHT SERVER READY ==="
+          Write-Host "IP: $ip"
+          Write-Host "User: Admin"
+          Write-Host "Pass: P@ssw0rd123!"
+          while ($true) { Start-Sleep -Seconds 360 }
+          
