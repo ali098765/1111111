@@ -1,0 +1,31 @@
+name: hdhdhdhd
+
+on:
+  workflow_dispatch:
+
+jobs:
+  tailscale-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3600
+    steps:
+      - name: Install and Start Tailscale as Exit Node
+        run: |
+          # تثبيت Tailscale تلقائياً على نظام لينكس
+          curl -fsSL https://tailscale.com/install.sh | sh
+          
+          # تشغيل الخدمة والإعلان عنها كـ Exit Node مع تثبيت اسم السيرفر
+          sudo tailscaled &
+          sleep 3
+          sudo tailscale up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=light-server --advertise-exit-node --force-reauth
+          
+          # عرض عنوان الـ IP الخاص بالسيرفر
+          echo "Tailscale IPv4:"
+          tailscale ip -4
+
+      - name: Keep Runner Active
+        run: |
+          echo "Linux Exit Node is active and running!"
+          while true; do
+              sleep 300
+          done
+          
